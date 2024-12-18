@@ -38,6 +38,7 @@
             },
             "args": [
                 "task=XHandRotCube",
+                "headless=False",
             ],
             "justMyCode": false,
         }

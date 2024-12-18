@@ -126,7 +126,7 @@ class XHandRotCube(VecTask):
         ## create actor
         ### create robot actor
             hand_init_pose = gymapi.Transform()
-            hand_init_pose.p = gymapi.Vec3(0, -0.1, 0.5)
+            hand_init_pose.p = gymapi.Vec3(-0.05, -0.1, 0.5)
             qx, qy, qz, qw = R.from_euler('xyz', [90, 0, 0], degrees=True).as_quat() # scalar-last by default
             hand_init_pose.r = gymapi.Quat(qx, qy, qz, qw)
             hand_actor = self.gym.create_actor(env_ptr, robot_asset, hand_init_pose, "robot_hand", i, -1)
@@ -134,7 +134,7 @@ class XHandRotCube(VecTask):
             self.hand_indices.append(hand_idx)
         ### create object actor
             object_start_pose = gymapi.Transform()
-            object_start_pose.p = gymapi.Vec3(0, 0, 0.8)
+            object_start_pose.p = gymapi.Vec3(0, 0, 0.6)
             object_actor = self.gym.create_actor(env_ptr, object_asset, object_start_pose, "object", i, -1)
             object_idx = self.gym.get_actor_index(env_ptr, object_actor, gymapi.DOMAIN_SIM)
             self.object_indices.append(object_idx)
