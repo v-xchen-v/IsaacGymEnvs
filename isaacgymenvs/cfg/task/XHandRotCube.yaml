@@ -7,8 +7,8 @@ physics_engine: ${..physics_engine}
 
 # if given, will override the device setting in gym.
 env: 
-  # numEnvs: ${resolve_default:16384,${...num_envs}}
-  numEnvs: ${resolve_default:4,${...num_envs}} # for debugging
+  numEnvs: ${resolve_default:16384,${...num_envs}}
+  # numEnvs: ${resolve_default:1024,${...num_envs}} # for debugging
   envSpacing: 2
   episodeLength: 600
   enableDebugVis: False
@@ -48,7 +48,7 @@ env:
   rotEps: 0.1
   actionPenaltyScale: -0.0002
   reachGoalBonus: 250
-  fallDistance: 0.50
+  fallDistance: 0.80
   fallPenalty: 0.0
 
   objectType: "block" # can be block, egg or pen
