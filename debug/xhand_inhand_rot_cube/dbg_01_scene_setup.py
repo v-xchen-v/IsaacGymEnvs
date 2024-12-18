@@ -1,3 +1,5 @@
+'''Debug script to setup a scene with xhand and cube in hand.
+Set initial pose of xhand and cube.''' 
 import os
 from isaacgym import gymapi
 from scipy.spatial.transform import Rotation as R
