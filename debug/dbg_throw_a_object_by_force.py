@@ -29,7 +29,7 @@ sphere_actor = gym.create_actor(env, sphere_asset, initial_pose, "Sphere", 0, 0)
 # Get the rigid body handle for the sphere
 rigid_body_handle = gym.get_actor_rigid_body_handle(env, sphere_actor, 0)
 
-# Define the force to apply
+# Apply a force to "throw" the sphere
 force = gymapi.Vec3(50, 500, 0)  # Force vector in Newtons
 force_position = gymapi.Vec3(0, 0.5, 0)  # Position where the force is applied
 
