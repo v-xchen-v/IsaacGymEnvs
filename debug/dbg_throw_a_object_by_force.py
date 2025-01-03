@@ -1,5 +1,4 @@
 from isaacgym import gymapi
-from isaacgym import gymutil
 
 # Initialize gym and create simulation
 gym = gymapi.acquire_gym()
