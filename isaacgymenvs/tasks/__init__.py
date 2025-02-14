@@ -57,6 +57,7 @@ from .industreal.industreal_task_pegs_insert import IndustRealTaskPegsInsert
 from .industreal.industreal_task_gears_insert import IndustRealTaskGearsInsert
 
 from .xhand_rot_cube import XHandRotCube
+from .xhand_roll_ball import XHandRollBall
 
 
 def resolve_allegro_kuka(cfg, *args, **kwargs):
@@ -114,4 +115,5 @@ isaacgym_task_map = {
     "ShadowHand": ShadowHand,
     "Trifinger": Trifinger,
     "XHandRotCube": XHandRotCube,
+    "XHandRollBall": XHandRollBall,
 }

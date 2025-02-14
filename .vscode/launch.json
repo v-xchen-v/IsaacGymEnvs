@@ -41,6 +41,49 @@
                 "headless=False",
             ],
             "justMyCode": false,
+        },
+        {
+            "name": "Debug Train XHandRollBall",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/isaacgymenvs/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+              "PYTHONPATH": "${workspaceFolder}/python:${env:PYTHONPATH}"
+            },
+            "args": [
+                "task=XHandRollBall",
+                "headless=True",
+                // "capture_video=True",
+                // "capture_video_freq=150",
+                // "capture_video_len=100",
+                // "force_render=False",
+            ],
+            "justMyCode": false,
+        },
+        {
+            "name": "Play XHandRollBall",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/isaacgymenvs/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+              "PYTHONPATH": "${workspaceFolder}/python:${env:PYTHONPATH}"
+            },
+            "args": [
+                "task=XHandRollBall",
+                "test=True",
+                "num_envs=64",
+                "checkpoint=/home/yichao/Documents/repos/IsaacGymEnvs/runs/XHandRollBall_14-14-21-44/nn/XHandRollBall.pth",
+                "headless=False",
+                // "capture_video=True",
+                // "capture_video_freq=150",
+                // "capture_video_len=100",
+                // "force_render=False",
+            ],
+            "justMyCode": false,
         }
     ]
 }
