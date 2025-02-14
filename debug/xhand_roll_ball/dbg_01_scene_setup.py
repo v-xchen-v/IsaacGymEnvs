@@ -37,7 +37,7 @@ if sim is None:
 asset_root = "./assets"
 robot_asset_file = "urdf/xhand/xhand_right.urdf"
 # robot_asset_file = "urdf/franka_description/robots/franka_panda.urdf"
-object_asset_file = "urdf/ball_to_roll.urdf"
+object_asset_file = "urdf/ball_to_roll/sphere.urdf"
 
 # Robot asset
 robot_asset_options = gymapi.AssetOptions()
@@ -52,6 +52,8 @@ if robot_asset is None:
 num_dofs = gym.get_asset_dof_count(robot_asset)
 
 # Object asset
+object_asset_options = gymapi.AssetOptions()
+object_asset_options.use_mesh_materials = True
 object_asset = gym.load_asset(sim, asset_root, object_asset_file)
 if object_asset is None:
     raise Exception("Failed to load object asset")
