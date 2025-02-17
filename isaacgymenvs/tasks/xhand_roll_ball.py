@@ -64,6 +64,7 @@ class XHandRollBall(VecTask):
         self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor)
         self.initial_root_state_tensor = self.root_state_tensor.clone()
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
+        self.initial_dof_states = self.dof_state.clone()
             
     def create_sim(self):
         self.dt = self.sim_params.dt
@@ -208,15 +209,16 @@ class XHandRollBall(VecTask):
         # reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         # print(f"reset_env_ids: {reset_env_ids}")
         
-        # use relative action
-        delta_limits = self.hand_dof_upper_limits[self.actuated_dof_indices] - self.hand_dof_lower_limits[self.actuated_dof_indices]
-        # design action delta as policy output: [-1, 1] * [-delta_limits, delta_limits]
+        # # use relative action
+        # delta_limits = self.hand_dof_upper_limits[self.actuated_dof_indices] - self.hand_dof_lower_limits[self.actuated_dof_indices]
+        # # design action delta as policy output: [-1, 1] * [-delta_limits, delta_limits]
         
+        # relative_control_scale = 0.1
         # apply action
         self.actions = actions.clone().to(self.device)
         self.cur_targets = torch.zeros((self.num_envs, self.num_hand_dofs), dtype=torch.float, device=self.device)
-        self.actions = torch.clamp(self.actions, -1.0, 1.0)
-        self.actions = self.actions * delta_limits
+        # # self.actions = torch.clamp(self.actions, -1.0, 1.0)
+        # self.actions = self.prev_targets + self.actions * relative_control_scale
         self.cur_targets[:, self.actuated_dof_indices] = scale(self.actions,
                                                                 self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
         # self.cur_targets[:, self.actuated_dof_indices] = self.act_moving_average * self.cur_targets[:,
@@ -224,9 +226,9 @@ class XHandRollBall(VecTask):
         # self.cur_targets[:, self.actuated_dof_indices] = tensor_clamp(self.cur_targets[:, self.actuated_dof_indices],
         #                                                                   self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
 
-        # self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
+        self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self.cur_targets))
-        
+        # self.prev_targets = self.cur_targets.clone()
     
     def post_physics_step(self):
         # Ref: https://isaac-sim.github.io/IsaacLab/main/source/migration/migrating_from_isaacgymenvs.html#pre-and-post-physics-step
@@ -245,24 +247,38 @@ class XHandRollBall(VecTask):
     def reset_idx(self, env_ids):
         # Ref: isaacgymenvs/tasks/ant.py
         # reset object pose
+        to_reset_object_indices = self.object_indices[env_ids].to(torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.initial_root_state_tensor),
-                                                     gymtorch.unwrap_tensor(torch.tensor(self.object_indices, dtype=torch.int32, device=self.device)), 
-                                                     len(self.object_indices))
+                                                     gymtorch.unwrap_tensor(torch.tensor(to_reset_object_indices, dtype=torch.int32, device=self.device)), 
+                                                     len(to_reset_object_indices))
                 
         # reset hand pose
-        hand_indices = self.hand_indices[env_ids].to(torch.int32)
+        to_reset_hand_indices = self.hand_indices[env_ids].to(torch.int32)
+        # hand_indices = self.hand_indices[env_ids].to(torch.int32)
         
-        pos = self.hand_default_dof_pos
-        self.prev_targets[env_ids, :self.hand_num_dofs] = pos
+        # pos = self.hand_default_dof_pos
+        # self.prev_targets[env_ids, :] = pos
+        # # print(f'Hand default pos: {self.prev_targets[env_ids, :self.hand_num_dofs]}')
+        
+        # expand default pos to all envs
+        pos = self.hand_default_dof_pos.expand(self.num_envs, -1).clone().contiguous()
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
-                                                gymtorch.unwrap_tensor(self.prev_targets),
-                                                gymtorch.unwrap_tensor(hand_indices), len(env_ids))
+                                                gymtorch.unwrap_tensor(pos),
+                                                gymtorch.unwrap_tensor(to_reset_hand_indices), 
+                                                len(env_ids))
 
-        env_ids_int32 = env_ids.to(dtype=torch.int32)
+        # env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
-                                              gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(hand_indices), len(env_ids_int32))
+                                              gymtorch.unwrap_tensor(self.initial_dof_states),
+                                              gymtorch.unwrap_tensor(to_reset_hand_indices), len(env_ids))
+        # print(f'Dof state tensor: {self.dof_state}')
+        # all_env_ids = torch.arange(self.num_envs, device=self.device)
+        self.gym.set_dof_state_tensor_indexed(self.sim, 
+                                              gymtorch.unwrap_tensor(self.initial_dof_states),
+                                              gymtorch.unwrap_tensor(to_reset_hand_indices),
+                                              len(env_ids))
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
 
         # zero reset buffer
         self.reset_buf[env_ids_int32] = 0
