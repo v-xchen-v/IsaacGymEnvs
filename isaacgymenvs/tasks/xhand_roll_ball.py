@@ -44,7 +44,8 @@ class XHandRollBall(VecTask):
         self.hand_num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
         print("Num dofs: ", self.hand_num_dofs)
         self.prev_targets = torch.zeros((self.num_envs, self.hand_num_dofs), dtype=torch.float, device=self.device)
-        self.hand_default_dof_pos = torch.zeros(self.hand_num_dofs, dtype=torch.float, device=self.device)
+        # Bend fingers a bit to avoid ball rolling off
+        self.hand_default_dof_pos = torch.ones(self.hand_num_dofs, dtype=torch.float, device=self.device)*0.05
         
         # set position of the camera to get a better view
         if self.viewer != None:
@@ -91,8 +92,8 @@ class XHandRollBall(VecTask):
         # load robot and object assets
         asset_root = "./assets"
         robot_asset_file = "urdf/xhand/xhand_right.urdf"
-        object_asset_file = "urdf/ball_to_roll.urdf"
-        goal_asset_file = "urdf/ball_to_roll.urdf"
+        object_asset_file = "urdf/ball_to_roll/sphere.urdf"
+        goal_asset_file = "urdf/ball_to_roll/sphere.urdf"
         
             
         ## set asset options
@@ -126,7 +127,7 @@ class XHandRollBall(VecTask):
         ## create actor
         ### create robot actor
             hand_init_pose = gymapi.Transform()
-            hand_init_pose.p = gymapi.Vec3(-0.05, -0.1, 0.5)
+            hand_init_pose.p = gymapi.Vec3(0., -0.1, 0.5)
             qx, qy, qz, qw = R.from_euler('xyz', [90, 0, 0], degrees=True).as_quat() # scalar-last by default
             hand_init_pose.r = gymapi.Quat(qx, qy, qz, qw)
             hand_actor = self.gym.create_actor(env_ptr, robot_asset, hand_init_pose, "robot_hand", i, -1)
@@ -134,12 +135,25 @@ class XHandRollBall(VecTask):
             self.hand_indices.append(hand_idx)
         ### create object actor
             object_start_pose = gymapi.Transform()
-            object_start_pose.p = gymapi.Vec3(0, 0, 0.6)
+            object_start_pose.p = gymapi.Vec3(0, 0, 0.58)
             object_actor = self.gym.create_actor(env_ptr, object_asset, object_start_pose, "object", i, -1)
             object_idx = self.gym.get_actor_index(env_ptr, object_actor, gymapi.DOMAIN_SIM)
             self.object_indices.append(object_idx)
             self.object_actor_handles.append(object_actor)
             
+            shape_props = self.gym.get_actor_rigid_shape_properties(env_ptr, object_actor)
+            # set_actor_rigid_shape_properties enables setting shape properties for rigid body
+            # Properties include friction, rolling_friction, torsion_friction, restitution etc.
+            shape_props[0].friction = 1.0
+            # shape_props[0].rolling_friction = 0.2
+            # shape_props[0].torsion_friction = 0.2
+            self.gym.set_actor_rigid_shape_properties(env_ptr, object_actor, shape_props)
+            
+            # get object initial pose
+            self.object_initial_pos = object_start_pose.p 
+            # convert to tensor
+            self.object_initial_pos = to_torch([self.object_initial_pos.x, self.object_initial_pos.y, self.object_initial_pos.z], device=self.device)
+                                         
         ### create goal object actor
             self.goal_displacement = gymapi.Vec3(-0.2, -0.06, 0.12)
             goal_start_pose = gymapi.Transform()
@@ -194,18 +208,23 @@ class XHandRollBall(VecTask):
         # reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         # print(f"reset_env_ids: {reset_env_ids}")
         
+        # use relative action
+        delta_limits = self.hand_dof_upper_limits[self.actuated_dof_indices] - self.hand_dof_lower_limits[self.actuated_dof_indices]
+        # design action delta as policy output: [-1, 1] * [-delta_limits, delta_limits]
+        
         # apply action
         self.actions = actions.clone().to(self.device)
         self.cur_targets = torch.zeros((self.num_envs, self.num_hand_dofs), dtype=torch.float, device=self.device)
-        
+        self.actions = torch.clamp(self.actions, -1.0, 1.0)
+        self.actions = self.actions * delta_limits
         self.cur_targets[:, self.actuated_dof_indices] = scale(self.actions,
                                                                 self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
-        self.cur_targets[:, self.actuated_dof_indices] = self.act_moving_average * self.cur_targets[:,
-                                                                                                    self.actuated_dof_indices] + (1.0 - self.act_moving_average) * self.prev_targets[:, self.actuated_dof_indices]
-        self.cur_targets[:, self.actuated_dof_indices] = tensor_clamp(self.cur_targets[:, self.actuated_dof_indices],
-                                                                          self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
+        # self.cur_targets[:, self.actuated_dof_indices] = self.act_moving_average * self.cur_targets[:,
+        #                                                                                             self.actuated_dof_indices] + (1.0 - self.act_moving_average) * self.prev_targets[:, self.actuated_dof_indices]
+        # self.cur_targets[:, self.actuated_dof_indices] = tensor_clamp(self.cur_targets[:, self.actuated_dof_indices],
+        #                                                                   self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
 
-        self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
+        # self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self.cur_targets))
         
     
@@ -266,7 +285,7 @@ class XHandRollBall(VecTask):
         # reset_buf is a tensor of shape (num_envs,) with boolean values, true if the environment should be reset
         self.reset_buf, self.rew_buf = compute_reward_fn(
             reset_buf=self.reset_buf, 
-            object_pos=self.object_pos, target_pos=self.target_pos, fall_dist=self.fall_dist,
+            object_pos=self.object_pos, target_pos=self.object_initial_pos, fall_dist=self.fall_dist,
             object_rot=self.object_rot, target_rot=self.target_rot, rot_eps=self.rot_eps, rot_reward_scale=self.rot_reward_scale, dist_reward_scale=self.dist_reward_scale,
             actions=self.actions, action_penalty_scale=self.action_penalty_scale
             )
