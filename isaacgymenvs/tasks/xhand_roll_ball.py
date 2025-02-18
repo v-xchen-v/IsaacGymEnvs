@@ -34,6 +34,7 @@ class XHandRollBall(VecTask):
         self.rot_reward_scale = self.cfg["env"]["rotRewardScale"]
         self.action_penalty_scale = self.cfg["env"]["actionPenaltyScale"]
         self.rot_eps = self.cfg["env"]["rotEps"]
+        self.hand_dof_speed_scale = self.cfg["env"]["dofSpeedScale"]
 
         
         self.envs = []
@@ -219,7 +220,8 @@ class XHandRollBall(VecTask):
         self.cur_targets = torch.zeros((self.num_envs, self.num_hand_dofs), dtype=torch.float, device=self.device)
         # # self.actions = torch.clamp(self.actions, -1.0, 1.0)
         # self.actions = self.prev_targets + self.actions * relative_control_scale
-        self.cur_targets[:, self.actuated_dof_indices] = scale(self.actions,
+        targets = self.prev_targets[:, self.actuated_dof_indices] + self.hand_dof_speed_scale * self.dt * self.actions
+        self.cur_targets[:, self.actuated_dof_indices] = scale(targets,
                                                                 self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
         # self.cur_targets[:, self.actuated_dof_indices] = self.act_moving_average * self.cur_targets[:,
         #                                                                                             self.actuated_dof_indices] + (1.0 - self.act_moving_average) * self.prev_targets[:, self.actuated_dof_indices]
@@ -291,6 +293,7 @@ class XHandRollBall(VecTask):
         self.object_pose = self.root_state_tensor[self.object_indices, 0:7]
         self.object_pos = self.root_state_tensor[self.object_indices, 0:3]
         self.object_rot = self.root_state_tensor[self.object_indices, 3:7]
+        self.ball_ang_vel = self.root_state_tensor[self.object_indices, 10:14]
         
         self.target_pose = self.root_state_tensor[self.target_indices, 0:7]
         self.target_pos = self.root_state_tensor[self.target_indices, 0:3]
@@ -303,7 +306,8 @@ class XHandRollBall(VecTask):
             reset_buf=self.reset_buf, 
             object_pos=self.object_pos, target_pos=self.object_initial_pos, fall_dist=self.fall_dist,
             object_rot=self.object_rot, target_rot=self.target_rot, rot_eps=self.rot_eps, rot_reward_scale=self.rot_reward_scale, dist_reward_scale=self.dist_reward_scale,
-            actions=self.actions, action_penalty_scale=self.action_penalty_scale
+            actions=self.actions, action_penalty_scale=self.action_penalty_scale,
+            ball_ang_vel=self.ball_ang_vel
             )
         pass
     
@@ -311,7 +315,7 @@ class XHandRollBall(VecTask):
 def compute_reward_fn(reset_buf:torch.Tensor,
                       object_pos, target_pos, fall_dist:float,
                       object_rot, target_rot, rot_eps:float, rot_reward_scale:float, dist_reward_scale:float,
-                      actions:torch.Tensor, action_penalty_scale:float,):
+                      actions:torch.Tensor, action_penalty_scale:float, ball_ang_vel: torch.Tensor):
     # Distance from the hand to the object
     goal_dist = torch.norm(object_pos - target_pos, p=2, dim=-1)
     # print("Goal dist: ", goal_dist)
@@ -328,9 +332,32 @@ def compute_reward_fn(reset_buf:torch.Tensor,
     dist_rew = goal_dist * dist_reward_scale
     rot_rew = 1.0/(torch.abs(rot_dist) + rot_eps) * rot_reward_scale
 
-    action_penalty = torch.sum(actions ** 2, dim=-1)
+    # 2. Encourage Rolling Motion
+    # ball_spin_target = 10
+    # ball_spin_target_max = 100
+    ball_spin = torch.norm(ball_ang_vel, dim=-1)
+    # # print(f"dist_rew: {dist_rew}")
+    # deviation = torch.abs(torch.clamp(ball_spin, max=ball_spin_target_max) - ball_spin_target_max)
+    # lambda_factor=0.01
+    # ball_spin_target = 50
+    # if ball_spin < 10:
+    #     rot_reward = -1
+    # else:
+    #     rot_reward = lambda_factor * deviation
+    # rot_reward = torch.where(ball_spin < 10, torch.tensor(1), lambda_factor*deviation)
+    # print(f"ball spin: {rot_reward}")
+    
+    # action_penalty = torch.sum(actions ** 2, dim=-1)
+    
+    min_val=0
+    max_val=20
+    normed_ball_spin = torch.clamp((ball_spin - min_val) / (max_val - min_val), 0, 1)
 
+    sphere_radius = 0.45
+    if goal_dist > sphere_radius*1.2:
+        reward = -10
+        
     # Total reward is: position distance + orientation alignment + action regularization + success bonus + fall penalty
-    reward = dist_rew + rot_rew + action_penalty * action_penalty_scale
+    reward = dist_rew + normed_ball_spin #+ action_penalty * action_penalty_scale
     
     return resets, reward

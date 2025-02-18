@@ -49,7 +49,7 @@ env:
   rotEps: 0.1
   actionPenaltyScale: -0.0002
   reachGoalBonus: 250
-  fallDistance: 0.80
+  fallDistance: 0.10
   fallPenalty: 0.0
 
   objectType: "block" # can be block, egg or pen
