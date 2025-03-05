@@ -56,7 +56,7 @@ class XHandRollBall(VecTask):
             
         # get gym GPU state tensors
         actor_root_state_tensor = self.gym.acquire_actor_root_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
+        _dof_state = self.gym.acquire_dof_state_tensor(self.sim)
 
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
@@ -64,8 +64,8 @@ class XHandRollBall(VecTask):
         # shape: (num_action_in_all_envs, 13)
         self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor)
         self.initial_root_state_tensor = self.root_state_tensor.clone()
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.initial_dof_states = self.dof_state.clone()
+        self.dof_state_tensor = gymtorch.wrap_tensor(_dof_state)
+        self.initial_dof_states = self.dof_state_tensor.clone()
             
     def create_sim(self):
         self.dt = self.sim_params.dt
@@ -217,10 +217,15 @@ class XHandRollBall(VecTask):
         # relative_control_scale = 0.1
         # apply action
         self.actions = actions.clone().to(self.device)
+        # # clamp action to [0, 1]
+        self.action = torch.clamp(self.actions, 0, 1)
+        # # 
         self.cur_targets = torch.zeros((self.num_envs, self.num_hand_dofs), dtype=torch.float, device=self.device)
-        # # self.actions = torch.clamp(self.actions, -1.0, 1.0)
-        # self.actions = self.prev_targets + self.actions * relative_control_scale
-        targets = self.prev_targets[:, self.actuated_dof_indices] + self.hand_dof_speed_scale * self.dt * self.actions
+        # # # self.actions = torch.clamp(self.actions, -1.0, 1.0)
+        # # self.actions = self.prev_targets + self.actions * relative_control_scale
+        
+        targets = self.actions *(self.hand_dof_upper_limits[self.actuated_dof_indices] - self.hand_dof_lower_limits[self.actuated_dof_indices])+self.hand_dof_lower_limits[self.actuated_dof_indices]
+        # targets = self.prev_targets[:, self.actuated_dof_indices] + self.hand_dof_speed_scale * self.dt * self.actions
         self.cur_targets[:, self.actuated_dof_indices] = scale(targets,
                                                                 self.hand_dof_lower_limits[self.actuated_dof_indices], self.hand_dof_upper_limits[self.actuated_dof_indices])
         # self.cur_targets[:, self.actuated_dof_indices] = self.act_moving_average * self.cur_targets[:,
@@ -250,8 +255,13 @@ class XHandRollBall(VecTask):
         # Ref: isaacgymenvs/tasks/ant.py
         # reset object pose
         to_reset_object_indices = self.object_indices[env_ids].to(torch.int32)
+        
+        # generate random values
+        rand_floats = torch_rand_float(-0.005, 0.005, (len(to_reset_object_indices), 3), device=self.device)
+        randomed_initial_root_state_tensor = self.initial_root_state_tensor.clone()
+        randomed_initial_root_state_tensor[to_reset_object_indices, :3]+=rand_floats
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.initial_root_state_tensor),
+                                                     gymtorch.unwrap_tensor(randomed_initial_root_state_tensor),
                                                      gymtorch.unwrap_tensor(torch.tensor(to_reset_object_indices, dtype=torch.int32, device=self.device)), 
                                                      len(to_reset_object_indices))
                 
@@ -299,6 +309,11 @@ class XHandRollBall(VecTask):
         self.target_pos = self.root_state_tensor[self.target_indices, 0:3]
         self.target_rot = self.root_state_tensor[self.target_indices, 3:7]
         
+        self.dof_states = self.dof_state_tensor
+        self.dof_states_pos = self.dof_states[:, 0].reshape(self.num_envs, -1)
+        self.dof_states_vel = self.dof_states[:, 1].reshape(self.num_envs, -1)
+        pass
+        
     
     def compute_reward(self, env_idx):
         # reset_buf is a tensor of shape (num_envs,) with boolean values, true if the environment should be reset
@@ -307,7 +322,7 @@ class XHandRollBall(VecTask):
             object_pos=self.object_pos, target_pos=self.object_initial_pos, fall_dist=self.fall_dist,
             object_rot=self.object_rot, target_rot=self.target_rot, rot_eps=self.rot_eps, rot_reward_scale=self.rot_reward_scale, dist_reward_scale=self.dist_reward_scale,
             actions=self.actions, action_penalty_scale=self.action_penalty_scale,
-            ball_ang_vel=self.ball_ang_vel
+            ball_ang_vel=self.ball_ang_vel,  dof_vel=self.dof_states_vel
             )
         pass
     
@@ -315,7 +330,8 @@ class XHandRollBall(VecTask):
 def compute_reward_fn(reset_buf:torch.Tensor,
                       object_pos, target_pos, fall_dist:float,
                       object_rot, target_rot, rot_eps:float, rot_reward_scale:float, dist_reward_scale:float,
-                      actions:torch.Tensor, action_penalty_scale:float, ball_ang_vel: torch.Tensor):
+                      actions:torch.Tensor, action_penalty_scale:float, ball_ang_vel: torch.Tensor,
+                      dof_vel: torch.Tensor):
     # Distance from the hand to the object
     goal_dist = torch.norm(object_pos - target_pos, p=2, dim=-1)
     # print("Goal dist: ", goal_dist)
@@ -350,14 +366,37 @@ def compute_reward_fn(reset_buf:torch.Tensor,
     # action_penalty = torch.sum(actions ** 2, dim=-1)
     
     min_val=0
-    max_val=20
-    normed_ball_spin = torch.clamp((ball_spin - min_val) / (max_val - min_val), 0, 1)
+    max_val=10
+    rot_w = 3
+    normed_ball_spin = torch.clamp((ball_spin - min_val) / (max_val - min_val), 0, 1*rot_w)
 
-    sphere_radius = 0.45
-    if goal_dist > sphere_radius*1.2:
-        reward = -10
-        
-    # Total reward is: position distance + orientation alignment + action regularization + success bonus + fall penalty
-    reward = dist_rew + normed_ball_spin #+ action_penalty * action_penalty_scale
+
+    # Compute absolute joint velocity sum per environmens
+    weight_movement = 0.1
+    dofs_movement_reward = torch.mean(torch.abs(dof_vel), dim=-1) * weight_movement
     
+    # Penalize small movements(if all joints have near-zero speed)
+    weight_small_movement = 10
+    small_movement_penalty = torch.exp(-torch.mean(torch.abs(dof_vel), dim=-1)*10)
+    
+    # Total reward is: position distance + orientation alignment + action regularization + success bonus + fall penalty
+    reward = dist_rew + normed_ball_spin  - weight_small_movement*small_movement_penalty + dofs_movement_reward #+ action_penalty * action_penalty_scale
+    
+    sphere_radius = 0.45
+    # if goal_dist > sphere_radius*1.2:
+    #     # fill reward as -10
+    #     reward = torch.ones()
+    reward = torch.where(goal_dist>sphere_radius*1.2, torch.tensor(-10.0), reward)
+        
+        
+    # print reward for debugging
+    # reward_dict = {
+    #     'dist_rew': dist_rew,
+    #     'ball_spin': normed_ball_spin,
+    #     'dofs_movement_reward': dofs_movement_reward,
+    #     'small_movement_penalty': -weight_small_movement*small_movement_penalty
+    # }
+    # print(f'reward_dict: {reward_dict}')
+    
+    # if state for a while reset
     return resets, reward
