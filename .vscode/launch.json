@@ -41,6 +41,22 @@
                 "headless=False",
             ],
             "justMyCode": false,
+        },
+        {
+            "name": "Debug Train RealmanTouchThrownBall",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/isaacgymenvs/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+              "PYTHONPATH": "${workspaceFolder}/python:${env:PYTHONPATH}"
+            },
+            "args": [
+                "task=RealmanTouchThrownBall",
+                "headless=False",
+            ],
+            "justMyCode": false,
         }
     ]
 }
