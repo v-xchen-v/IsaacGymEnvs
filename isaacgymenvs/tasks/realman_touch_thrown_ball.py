@@ -109,11 +109,30 @@ class RealmanTouchThrownBall(VecTask):
             
             self.envs.append(env_ptr)
             self.robot_handles.append(robot_handle)
+            self.ball_handles.append(ball_handle)
 
-            
+        self.bodies_per_env = int(self.gym.get_sim_rigid_body_count(self.sim)/self.num_envs)
+        
+        pass
+                # gym.get_actor_rigid_body_count(env, actor)
+        # self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), None, gymapi.ENV_SPACE)
+        
     def reset_idx(self, env_ids):
         # Reset logic for specified environments
-        pass
+        
+        # TODO: add a force to the ball
+        # set forces and torques for the ant root bodies
+        
+        forces = torch.zeros((self.num_envs, self.bodies_per_env, 3), device=self.device, dtype=torch.float)
+        ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
+        forces[:, ball_rigid_idx, 0] = 100
+        forces[:, ball_rigid_idx, 2] = 100
+        forces = forces.reshape(self.num_envs*self.bodies_per_env, 3)
+        self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), None, gymapi.ENV_SPACE)
+
+        
+        self.reset_buf[env_ids] = 0
+        self.progress_buf[env_ids] = 0
         
     def compute_observations(self):
         # Compute observations for all environments
@@ -121,13 +140,26 @@ class RealmanTouchThrownBall(VecTask):
         
     def compute_reward(self):
         # Compute rewards for all environments
-        pass
+        self.reset_buf[:] = compute_touchball_reward(
+            self.reset_buf, self.progress_buf, self.max_episode_length
+        )
         
     def pre_physics_step(self, actions):
         # Apply actions before physics simulation step
         pass
         
     def post_physics_step(self):
+        self.progress_buf += 1
+        
+        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(env_ids) > 0:
+            self.reset_idx(env_ids)
+        
         # Process after physics simulation step
         self.compute_observations()
         self.compute_reward()
+        
+def compute_touchball_reward(reset_buf, progress_buf, max_episode_length):
+    reset = torch.zeros_like(reset_buf)
+    reset = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), reset)
+    return reset
