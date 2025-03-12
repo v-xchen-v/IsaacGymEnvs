@@ -74,15 +74,16 @@ class RealmanTouchThrownBall(VecTask):
         
         pose = gymapi.Transform()
         if self.up_axis == 'z':
-            pose.p.z = 2.0
+            pose.p.z = 0.0
             # asset is rotated z-up by default, no additional rotations needed
             pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
         else:
-            pose.p.y = 2.0
+            pose.p.y = 0.0
             pose.r = gymapi.Quat(-np.sqrt(2)/2, 0.0, 0.0, np.sqrt(2)/2)
 
-        # self.robot_handles = []
-        # self.envs = []
+        self.robot_handles = []
+        self.ball_handles = []
+        self.envs = []
         # # Create environments
         for i in range(self.num_envs):
         #     # Add environment setup code here
@@ -91,14 +92,23 @@ class RealmanTouchThrownBall(VecTask):
             )
             robot_handle = self.gym.create_actor(env_ptr, robot_asset, pose, "realman", i, 1, 0)
 
-        #     dof_props = self.gym.get_actor_dof_properties(env_ptr, robot_handle)
-        #     dof_props['driveMode'][:] = gymapi.DOF_MODE_POS
-        #     dof_props['stiffness'][:] = 400.0
-        #     dof_props['damping'][:] = 80.0
-        #     self.gym.set_actor_dof_properties(env_ptr, robot_handle, dof_props)
+            # TODO: adjust the actuator properties here.
+            dof_props = self.gym.get_actor_dof_properties(env_ptr, robot_handle)
+            dof_props['driveMode'][:] = gymapi.DOF_MODE_POS
+            dof_props['stiffness'][:] = 400.0
+            dof_props['damping'][:] = 80.0
+            self.gym.set_actor_dof_properties(env_ptr, robot_handle, dof_props)
 
-        #     self.envs.append(env_ptr)
-        #     self.robot_handles.append(robot_handle)
+            # Add a sphere as a ball, 
+            ball_radius = 0.05
+            ball_asset = self.gym.create_sphere(self.sim, ball_radius)
+            ball_pose = gymapi.Transform()
+            ball_pose.p = gymapi.Vec3(-1.5, 0.0, ball_radius)
+            ball_handle = self.gym.create_actor(env_ptr, ball_asset, ball_pose, "ball", i, 1, 0)
+            
+            
+            self.envs.append(env_ptr)
+            self.robot_handles.append(robot_handle)
 
             
     def reset_idx(self, env_ids):
