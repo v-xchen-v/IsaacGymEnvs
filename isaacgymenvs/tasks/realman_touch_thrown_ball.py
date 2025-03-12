@@ -34,6 +34,20 @@ class RealmanTouchThrownBall(VecTask):
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         
+        # init rigid state here
+        _rb_states = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        self.rb_states = gymtorch.wrap_tensor(_rb_states)
+        self.ball_pos = torch.zeros((self.num_envs, 3), device=self.device)
+        
+        # record init states of robot and sphere for reset later
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        _initial_root_states = self.gym.acquire_actor_root_state_tensor(
+            self.sim
+        )  # [num_rigid_bodies, 13]
+        self.initial_root_states = gymtorch.wrap_tensor(
+            _initial_root_states
+        ).clone()
+        
     def create_sim(self):
         # set the up axis to be z-up given that assets are y-up by default
         self.up_axis = self.cfg["sim"]["up_axis"]
@@ -121,6 +135,12 @@ class RealmanTouchThrownBall(VecTask):
     def reset_idx(self, env_ids):
         # Reset logic for specified environments
         
+        # Reset the robot and ball's position
+        self.gym.set_actor_root_state_tensor(
+            self.sim, gymtorch.unwrap_tensor(self.initial_root_states)
+        )
+        
+        
         # Add a force to the ball
         forces = torch.zeros((self.num_envs, self.bodies_per_env, 3), device=self.device, dtype=torch.float)
         ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
@@ -136,18 +156,29 @@ class RealmanTouchThrownBall(VecTask):
         
     def compute_observations(self):
         # Compute observations for all environments
+        
+        # Fetch latest info
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        
+        # TODO: get the ball position
+        ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
+        vec_rb_states = self.rb_states.view(self.num_envs, self.bodies_per_env, 13)
+        self.ball_pos = vec_rb_states[:, ball_rigid_idx, 0:3]
+        # relative the env root pos
+
+        
         return self.obs_buf
         
     def compute_reward(self):
         # Compute rewards for all environments
         self.reset_buf[:] = compute_touchball_reward(
-            self.reset_buf, self.progress_buf, self.max_episode_length
+            self.reset_buf, self.progress_buf, self.max_episode_length, self.ball_pos
         )
         
     def pre_physics_step(self, actions):
         # Apply actions before physics simulation step
         pass
-        
+
     def post_physics_step(self):
         self.progress_buf += 1
         
@@ -159,7 +190,14 @@ class RealmanTouchThrownBall(VecTask):
         self.compute_observations()
         self.compute_reward()
         
-def compute_touchball_reward(reset_buf, progress_buf, max_episode_length):
+def compute_touchball_reward(reset_buf, progress_buf, max_episode_length, ball_pos):
     reset = torch.zeros_like(reset_buf)
     reset = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), reset)
+    # TODO: reset when the sphere out of the workspace
+    # reset = torch.where(ball_pos[:, 2] < 0.0, torch.ones_like(reset_buf), reset)
+    # reset = torch.where(ball_pos[:, 2] > 1.0, torch.ones_like(reset_buf), reset)
+    # reset = torch.where(ball_pos[:, 0] < -1.0, torch.ones_like(reset_buf), reset)
+    reset = torch.where(ball_pos[:, 0] > 1.0, torch.ones_like(reset_buf), reset)
+    # reset = torch.where(ball_pos[:, 1] < -1.0, torch.ones_like(reset_buf), reset)
+    reset = torch.where(ball_pos[:, 1] > 1.0, torch.ones_like(reset_buf), reset)
     return reset
