@@ -103,7 +103,8 @@ class RealmanTouchThrownBall(VecTask):
             ball_radius = 0.05
             ball_asset = self.gym.create_sphere(self.sim, ball_radius)
             ball_pose = gymapi.Transform()
-            ball_pose.p = gymapi.Vec3(-1.5, 0.0, ball_radius)
+            # TODO: adjust the ball position here.
+            ball_pose.p = gymapi.Vec3(-2.0, 0.0, ball_radius)
             ball_handle = self.gym.create_actor(env_ptr, ball_asset, ball_pose, "ball", i, 1, 0)
             
             
@@ -120,16 +121,15 @@ class RealmanTouchThrownBall(VecTask):
     def reset_idx(self, env_ids):
         # Reset logic for specified environments
         
-        # TODO: add a force to the ball
-        # set forces and torques for the ant root bodies
-        
+        # Add a force to the ball
         forces = torch.zeros((self.num_envs, self.bodies_per_env, 3), device=self.device, dtype=torch.float)
         ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
         forces[:, ball_rigid_idx, 0] = 100
-        forces[:, ball_rigid_idx, 2] = 100
+        forces[:, ball_rigid_idx, 2] = 120
         forces = forces.reshape(self.num_envs*self.bodies_per_env, 3)
         self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), None, gymapi.ENV_SPACE)
 
+        
         
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
