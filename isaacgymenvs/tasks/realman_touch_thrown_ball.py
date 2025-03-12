@@ -248,6 +248,8 @@ def compute_touchball_reward(reset_buf, progress_buf, max_episode_length, ball_p
     intercepted = distance < 0.1
     intercepted_reward = torch.where(intercepted, torch.tensor(1.0), torch.tensor(-1.0))
     
+    # reset if intercepted
+    reset = torch.where(intercepted, torch.ones_like(reset_buf), reset)    
     total_reward = intercepted_reward  + distance*-1.0
     reward = total_reward
     return reward, reset
