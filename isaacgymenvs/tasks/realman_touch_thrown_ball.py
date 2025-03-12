@@ -48,6 +48,10 @@ class RealmanTouchThrownBall(VecTask):
             _initial_root_states
         ).clone()
         
+        # record init DoF states for reset later
+        _global_dof_states = self.gym.acquire_dof_state_tensor(self.sim)
+        self.global_dof_states = gymtorch.wrap_tensor(_global_dof_states).clone()
+        
     def create_sim(self):
         # set the up axis to be z-up given that assets are y-up by default
         self.up_axis = self.cfg["sim"]["up_axis"]
@@ -135,12 +139,22 @@ class RealmanTouchThrownBall(VecTask):
     def reset_idx(self, env_ids):
         # Reset logic for specified environments
         
-        # Reset the robot and ball's position
+        ###########################
+        ####### Reset Robot #######
+        ###########################
+        # Reset the robot and ball's rigid position
         self.gym.set_actor_root_state_tensor(
             self.sim, gymtorch.unwrap_tensor(self.initial_root_states)
         )
         
+        # Reset the DoF of robots
+        self.gym.set_dof_state_tensor(
+            self.sim, gymtorch.unwrap_tensor(self.global_dof_states)
+        )
         
+        ##########################
+        ###### Initialize Ball ######
+        ##########################
         # Add a force to the ball
         forces = torch.zeros((self.num_envs, self.bodies_per_env, 3), device=self.device, dtype=torch.float)
         ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
