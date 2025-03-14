@@ -61,7 +61,7 @@ class RealmanTouchThrownBall(VecTask):
 
         self.sim = super().create_sim(self.device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         # Create ground plane
-        self._create_ground_plane()
+        self._create_ground_plane() 
         self._create_envs(self.num_envs, self.cfg["env"]['envSpacing'], int(np.sqrt(self.num_envs)))
     
     def _create_ground_plane(self):
@@ -108,9 +108,8 @@ class RealmanTouchThrownBall(VecTask):
         self.robot_handles = []
         self.ball_handles = []
         self.envs = []
-        self.ball_actor_indices = []
+        self.ball_indices = []
         self.robot_indices = []
-        self.ball_rigid_indices = []
         # # Create environments
         for i in range(self.num_envs):
         #     # Add environment setup code here
@@ -136,9 +135,7 @@ class RealmanTouchThrownBall(VecTask):
             ball_pose.p = gymapi.Vec3(-2.0, 0.0, ball_radius)
             ball_handle = self.gym.create_actor(env_ptr, ball_asset, ball_pose, "ball", i, 0, 0)
             ball_index = self.gym.get_actor_index(env_ptr, ball_handle, gymapi.DOMAIN_SIM)
-            self.ball_actor_indices.append(ball_index)
-            ball_rigid_idx = self.gym.find_actor_rigid_body_index(env_ptr, ball_handle, "ball", gymapi.DOMAIN_SIM)
-            self.ball_rigid_indices.append(ball_rigid_idx)
+            self.ball_indices.append(ball_index)
             
             self.envs.append(env_ptr)
             self.robot_handles.append(robot_handle)
@@ -146,9 +143,8 @@ class RealmanTouchThrownBall(VecTask):
 
         self.bodies_per_env = int(self.gym.get_sim_rigid_body_count(self.sim)/self.num_envs)
         
-        self.ball_actor_indices = to_torch(self.ball_actor_indices, dtype=torch.int32, device=self.device)
+        self.ball_indices = to_torch(self.ball_indices, dtype=torch.int32, device=self.device)
         self.robot_indices = to_torch(self.robot_indices, dtype=torch.int32, device=self.device)
-        self.ball_rigid_indices = to_torch(self.ball_rigid_indices, dtype=torch.int32, device=self.device)
         pass
                 # gym.get_actor_rigid_body_count(env, actor)
         # self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), None, gymapi.ENV_SPACE)
@@ -163,7 +159,7 @@ class RealmanTouchThrownBall(VecTask):
         # Reset the ball's rigid position
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self.initial_root_states),
-            gymtorch.unwrap_tensor(self.ball_actor_indices[env_ids_int32]),
+            gymtorch.unwrap_tensor(self.ball_indices[env_ids_int32]),
             len(env_ids_int32),
         )
         
@@ -178,10 +174,12 @@ class RealmanTouchThrownBall(VecTask):
         ###### Initialize Ball ######
         ##########################
         # Add a force to the ball
-        forces = torch.zeros((self.num_envs*self.bodies_per_env, 3), device=self.device, dtype=torch.float)
-        forces[self.ball_rigid_indices[env_ids], 0] = 150 # x-direction
-        forces[self.ball_rigid_indices[env_ids], 2] = 70 # z-direction
-        forces[self.ball_rigid_indices[env_ids], 1] = 30 # y-direction
+        forces = torch.zeros((self.num_envs, self.bodies_per_env, 3), device=self.device, dtype=torch.float)
+        ball_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.ball_handles[0], "ball", gymapi.DOMAIN_SIM)
+        forces[env_ids, ball_rigid_idx, 0] = 150 # x-direction
+        forces[env_ids, ball_rigid_idx, 2] = 70 # z-direction
+        forces[env_ids, ball_rigid_idx, 1] = 30 # y-direction
+        forces = forces.reshape(self.num_envs*self.bodies_per_env, 3)
         self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), None, gymapi.ENV_SPACE)
 
         
