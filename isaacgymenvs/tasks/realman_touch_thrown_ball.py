@@ -258,7 +258,7 @@ def compute_touchball_reward(reset_buf, progress_buf, max_episode_length, ball_p
     
     # determine if the sphere is intercepted by the end effector
     intercepted = distance < 0.1
-    intercepted_reward = torch.where(intercepted, torch.tensor(1.0), torch.tensor(-1.0))
+    intercepted_reward = torch.where(intercepted, torch.tensor(5.0), torch.tensor(-1.0))
     
     # reset if intercepted
     reset = torch.where(intercepted, torch.ones_like(reset_buf), reset)    
