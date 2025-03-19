@@ -57,6 +57,29 @@
                 "headless=False",
             ],
             "justMyCode": false,
+        },
+        {
+            "name": "Play RealmanTouchThrownBall",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/isaacgymenvs/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+              "PYTHONPATH": "${workspaceFolder}/python:${env:PYTHONPATH}"
+            },
+            "args": [
+                "task=RealmanTouchThrownBall",
+                "headless=False",
+                "test=True",
+                "num_envs=1",
+                "checkpoint=runs/RealmanTouchThrownBall_14-14-55-21/nn/last_RealmanTouchThrownBall_ep_475_rew_-4.922808.pth",
+                "capture_video=True",
+                "force_render=False",
+                "capture_video_freq=2000",
+                "capture_video_len=100"
+            ],
+            "justMyCode": false,
         }
     ]
 }
