@@ -54,6 +54,8 @@ class RealmanTouchThrownBall(VecTask):
         
         # get DoF limits
         
+        self.dof_record = []
+        
         
     def create_sim(self):
         # set the up axis to be z-up given that assets are y-up by default
@@ -96,6 +98,18 @@ class RealmanTouchThrownBall(VecTask):
         self.robot_lower_limits = robot_dof_props['lower']
         self.robot_upper_limits = robot_dof_props['upper']
 
+        # Get DOF names
+        dof_names =self.gym.get_asset_dof_names(robot_asset)
+
+        # Print DOF names
+        print("List of DOF names:", dof_names)
+
+        # List index and corresponding DOF name
+        actuated_dof_indices = []
+        for i, name in enumerate(dof_names):
+            print(f"Index {i}: {name}")
+            actuated_dof_indices.append(i)
+            
         pose = gymapi.Transform()
         if self.up_axis == 'z':
             pose.p.z = 0.0
@@ -186,6 +200,9 @@ class RealmanTouchThrownBall(VecTask):
         self.reset_buf[env_ids] = 0
         self.progress_buf[env_ids] = 0
         
+        # recording dof
+        np.save("dof_poses.npy", np.array(self.dof_record))
+        
     def compute_observations(self):
         # Compute observations for all environments
         
@@ -202,6 +219,13 @@ class RealmanTouchThrownBall(VecTask):
         ee_rigid_idx = self.gym.find_actor_rigid_body_index(self.envs[0], self.robot_handles[0], "Link7", gymapi.DOMAIN_SIM)
         vec_rb_states = self.rb_states.view(self.num_envs, self.bodies_per_env, 13)
         self.ee_pos = vec_rb_states[:, ee_rigid_idx, 0:3]
+        
+        # TODO: record DoF 
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.num_dofs = 7
+        vec_dof_states = self.dof_state.view(self.num_envs, self.num_dofs, 2)
+        dof_positions = vec_dof_states[:, :, 0]
+        self.dof_record.append(dof_positions.cpu().numpy().copy())  # Save current pose
         return self.obs_buf
         
     def compute_reward(self):
