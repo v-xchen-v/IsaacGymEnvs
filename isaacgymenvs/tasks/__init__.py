@@ -56,7 +56,8 @@ from .allegro_kuka.allegro_kuka_two_arms_reorientation import AllegroKukaTwoArms
 from .industreal.industreal_task_pegs_insert import IndustRealTaskPegsInsert
 from .industreal.industreal_task_gears_insert import IndustRealTaskGearsInsert
 
-from .xhand_rot_cube import XHandRotCube
+# from .xhand_rot_cube import XHandRotCube
+from .realman_touch_thrown_ball import RealmanTouchThrownBall
 
 
 def resolve_allegro_kuka(cfg, *args, **kwargs):
@@ -113,5 +114,6 @@ isaacgym_task_map = {
     "Quadcopter": Quadcopter,
     "ShadowHand": ShadowHand,
     "Trifinger": Trifinger,
-    "XHandRotCube": XHandRotCube,
+    # "XHandRotCube": XHandRotCube,
+    "RealmanTouchThrownBall": RealmanTouchThrownBall,
 }
